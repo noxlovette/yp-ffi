@@ -4,7 +4,7 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::panic::{self, AssertUnwindSafe};
 use std::slice;
-use tracing::{error, info, instrument};
+use tracing::{error, info};
 
 /// Kept separate for testing purposes
 fn blur(width: u32, height: u32, data: &mut [u8], params: &BlurParams) -> Result<(), String> {
@@ -21,13 +21,15 @@ fn blur(width: u32, height: u32, data: &mut [u8], params: &BlurParams) -> Result
 }
 
 #[unsafe(no_mangle)]
-#[instrument(skip(rgba_data))]
 pub unsafe extern "C" fn process_image(
     width: u32,
     height: u32,
     rgba_data: *mut u8,
     params: *const c_char,
 ) {
+    plugin_interface::init_plugin_tracing();
+    let _span = tracing::info_span!("process_image", width, height).entered();
+
     if rgba_data.is_null() || params.is_null() {
         error!("blur: null pointer passed to process_image");
         return;

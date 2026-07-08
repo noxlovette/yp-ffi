@@ -7,11 +7,23 @@ use std::ffi::CString;
 use std::fmt::Display;
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, instrument};
+use std::sync::Once;
+use tracing::{info, instrument};
 mod error;
 mod params;
 pub use error::*;
 pub use params::*;
+
+static PLUGIN_TRACING_INIT: Once = Once::new();
+
+/// Installs a `tracing` subscriber local to the calling dylib
+pub fn init_plugin_tracing() {
+    PLUGIN_TRACING_INIT.call_once(|| {
+        let filter =
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+        let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+    });
+}
 
 /// The C ABI every plugin dylib must export.
 pub type ProcessImageFn = unsafe extern "C" fn(u32, u32, *mut u8, *const c_char);
