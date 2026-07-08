@@ -1,7 +1,15 @@
 [workspace]
 resolver = '3'
-members = ["blur_plugin","image_processor", "mirror_plugin", "plugin_interface"]
+members = [
+    "blur_plugin",
+    "image_processor",
+    "mirror_plugin",
+    "plugin_interface",
+]
 
 [workspace.dependencies]
 thiserror = "2"
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = "0.25"

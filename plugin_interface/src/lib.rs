@@ -1,12 +1,13 @@
-use std::{fmt::Display, os::raw::c_char};
+use libloading::{Library, Symbol};
+use serde::{Deserialize, Serialize};
+use std::ffi::CString;
+use std::fmt::Display;
+use std::os::raw::c_char;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// Common interface for plugins in this workspace
-///
-/// Don't forget to add unsafe no mangle
-pub trait PluginInt {
-    extern "C" fn process_image(width: u32, height: u32, rgba_data: *mut u8, params: *const c_char);
-}
+/// The C ABI every plugin dylib must export.
+pub type ProcessImageFn = unsafe extern "C" fn(u32, u32, *mut u8, *const c_char);
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -14,8 +15,8 @@ pub enum Error {
     UnsupportedOs(String),
 }
 
-/// The plugin to use. No prefixes, no extensions
-#[derive(Clone, Debug)]
+/// The plugin to use. No prefixes, no extensions.
+#[derive(Clone, Debug, clap::ValueEnum)]
 pub enum Plugin {
     Mirror,
     Blur,
@@ -46,4 +47,37 @@ impl Plugin {
             other => return Err(Error::UnsupportedOs(other.into())),
         })
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MirrorParams {
+    pub horizontal: bool,
+    pub vertical: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BlurParams {
+    pub radius: u32,
+    pub iterations: u32,
+}
+
+/// loads `plugin`'s dylib from `dir` and calls its `process_image` export,
+/// mutating `data` in place.
+/// `params_json` is forwarded to the plugin as its JSON config.
+pub fn call_dynamic(
+    dir: &Path,
+    plugin: Plugin,
+    width: u32,
+    height: u32,
+    data: &mut [u8],
+    params_json: &str,
+) -> anyhow::Result<()> {
+    let path: PathBuf = dir.join(plugin.as_lib_name()?);
+    let lib = unsafe { Library::new(path)? };
+    let func: Symbol<ProcessImageFn> = unsafe { lib.get(b"process_image\0")? };
+    let params = CString::new(params_json)?;
+
+    unsafe { func(width, height, data.as_mut_ptr(), params.as_ptr()) };
+
+    Ok(())
 }
