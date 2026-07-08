@@ -1,6 +1,6 @@
 use clap::{Parser, ValueEnum};
 use clio::*;
-use std::path::PathBuf;
+use std::{io::Read, path::PathBuf};
 
 #[derive(Debug, clap::Parser)]
 #[command(version, about)]
@@ -17,14 +17,15 @@ struct Cli {
     plugin_path: Option<PathBuf>,
 }
 
-/// The plugin to use. No prefixes, no extensions
-#[derive(Clone, Debug, ValueEnum)]
-enum Plugin {
-    Mirror,
-}
-
 fn main() -> anyhow::Result<()> {
-    let args = Cli::parse();
+    let mut args = Cli::parse();
+
+    let img = image::open(args.input.path().path())?.to_rgba8();
+
+    let ((width, height), data) = (img.dimensions(), img.as_raw());
+
+    let mut params = String::new();
+    args.params.read_to_string(&mut params)?;
 
     Ok(())
 }

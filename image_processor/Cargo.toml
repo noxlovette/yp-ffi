@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+plugin_interface = { path = "../plugin_interface" }
 clap = { version = "4.6", features = ["derive"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
 thiserror.workspace = true
 anyhow.workspace = true
 image = "0.25"
+libloading = "0.9.0"
