@@ -1,6 +1,6 @@
 use libloading::{Library, Symbol};
 use serde::{Deserialize, Serialize};
-use std::ffi::CString;
+use std::ffi::{CString, NulError};
 use std::fmt::Display;
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
@@ -13,6 +13,10 @@ pub type ProcessImageFn = unsafe extern "C" fn(u32, u32, *mut u8, *const c_char)
 pub enum Error {
     #[error("unsupported OS: {0}")]
     UnsupportedOs(String),
+    #[error("failed to load plugin library: {0}")]
+    LibraryLoad(#[from] libloading::Error),
+    #[error("params JSON contains an interior null byte: {0}")]
+    InvalidParams(#[from] NulError),
 }
 
 /// The plugin to use. No prefixes, no extensions.
@@ -78,7 +82,7 @@ pub fn call_dynamic(
     height: u32,
     data: &mut [u8],
     params_json: &str,
-) -> anyhow::Result<()> {
+) -> Result<(), Error> {
     let path: PathBuf = dir.join(plugin.as_lib_name()?);
     let lib = unsafe { Library::new(path)? };
     let func: Symbol<ProcessImageFn> = unsafe { lib.get(b"process_image\0")? };

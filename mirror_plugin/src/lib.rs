@@ -2,13 +2,14 @@ use image::{ImageBuffer, Rgba, imageops};
 use plugin_interface::MirrorParams;
 use std::ffi::CStr;
 use std::os::raw::c_char;
+use std::panic::{self, AssertUnwindSafe};
 use std::slice;
 
-/// Applies the mirror transform to a raw RGBA buffer in place. Kept separate
-/// from `process_image` so it can be unit-tested without going through FFI.
-fn mirror(width: u32, height: u32, data: &mut [u8], params: &MirrorParams) {
-    let mut img: ImageBuffer<Rgba<u8>, &mut [u8]> = ImageBuffer::from_raw(width, height, data)
-        .expect("width/height do not match buffer length");
+/// a separate func for testing purposes
+fn mirror(width: u32, height: u32, data: &mut [u8], params: &MirrorParams) -> Result<(), String> {
+    let mut img: ImageBuffer<Rgba<u8>, Vec<u8>> =
+        ImageBuffer::from_raw(width, height, data.to_vec())
+            .ok_or_else(|| "width/height do not match buffer length".to_string())?;
 
     if params.horizontal {
         imageops::flip_horizontal_in_place(&mut img);
@@ -16,8 +17,24 @@ fn mirror(width: u32, height: u32, data: &mut [u8], params: &MirrorParams) {
     if params.vertical {
         imageops::flip_vertical_in_place(&mut img);
     }
+
+    data.copy_from_slice(img.as_raw());
+    Ok(())
 }
 
+/// parses `params_str` and runs the mirror
+fn process_image_inner(
+    width: u32,
+    height: u32,
+    data: &mut [u8],
+    params_str: &str,
+) -> Result<(), String> {
+    let params: MirrorParams =
+        serde_json::from_str(params_str).map_err(|e| format!("invalid mirror params: {e}"))?;
+    mirror(width, height, data, &params)
+}
+
+/// doesn't panic
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn process_image(
     width: u32,
@@ -25,24 +42,37 @@ pub unsafe extern "C" fn process_image(
     rgba_data: *mut u8,
     params: *const c_char,
 ) {
-    let params_str = unsafe { CStr::from_ptr(params) }
-        .to_str()
-        .expect("params must be valid UTF-8");
-    let params: MirrorParams = serde_json::from_str(params_str).expect("invalid mirror params");
+    if rgba_data.is_null() || params.is_null() {
+        eprintln!("mirror: null pointer passed to process_image");
+        return;
+    }
+
+    let params_str = match unsafe { CStr::from_ptr(params) }.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("mirror: params must be valid UTF-8: {e}");
+            return;
+        }
+    };
 
     let len = width as usize * height as usize * 4;
     let data = unsafe { slice::from_raw_parts_mut(rgba_data, len) };
 
-    mirror(width, height, data, &params);
+    let result = panic::catch_unwind(AssertUnwindSafe(|| {
+        process_image_inner(width, height, data, params_str)
+    }));
+
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => eprintln!("mirror: {e}"),
+        Err(_) => eprintln!("mirror: panicked while processing image"),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // 2x2 buffer, row-major, one distinct color per pixel:
-    // A B
-    // C D
     fn sample_2x2() -> Vec<u8> {
         vec![
             10, 10, 10, 255, 20, 20, 20, 255, // A B
@@ -61,7 +91,8 @@ mod tests {
                 horizontal: true,
                 vertical: false,
             },
-        );
+        )
+        .unwrap();
         assert_eq!(
             data,
             vec![
@@ -82,7 +113,8 @@ mod tests {
                 horizontal: false,
                 vertical: true,
             },
-        );
+        )
+        .unwrap();
         assert_eq!(
             data,
             vec![
@@ -103,7 +135,8 @@ mod tests {
                 horizontal: true,
                 vertical: true,
             },
-        );
+        )
+        .unwrap();
         assert_eq!(
             data,
             vec![
@@ -125,7 +158,8 @@ mod tests {
                 horizontal: false,
                 vertical: false,
             },
-        );
+        )
+        .unwrap();
         assert_eq!(data, original);
     }
 }
