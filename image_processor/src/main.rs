@@ -2,11 +2,13 @@ use clap::Parser;
 use clio::*;
 use plugin_interface::Plugin;
 use std::{io::Read, path::PathBuf};
+use tracing::{info, instrument};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, clap::Parser)]
 #[command(version, about)]
 struct Cli {
-    #[arg(value_parser, default_value = "-")]
+    #[arg(long, short, value_parser, default_value = "-")]
     input: Input,
     #[arg(long, short, value_parser, default_value = "-")]
     output: Output,
@@ -18,9 +20,15 @@ struct Cli {
     plugin_path: PathBuf,
 }
 
+#[instrument]
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or("info".into()))
+        .init();
+
     let mut args = Cli::parse();
 
+    info!("opening image");
     let img = image::open(args.input.path().path())?.to_rgba8();
     let (width, height) = img.dimensions();
     let mut data = img.into_raw();
@@ -28,7 +36,8 @@ fn main() -> anyhow::Result<()> {
     let mut params = String::new();
     args.params.read_to_string(&mut params)?;
 
-    image_processor::plugin_loader::call_dynamic(
+    info!("calling plugin");
+    plugin_interface::call_dynamic(
         &args.plugin_path,
         args.plugin,
         width,
@@ -37,6 +46,7 @@ fn main() -> anyhow::Result<()> {
         &params,
     )?;
 
+    info!("saving image");
     image::save_buffer(
         args.output.path().path(),
         &data,

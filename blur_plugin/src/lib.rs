@@ -4,13 +4,9 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::panic::{self, AssertUnwindSafe};
 use std::slice;
+use tracing::{error, info, instrument};
 
-/// Applies the blur transform to a raw RGBA buffer in place. Kept separate
-/// from `process_image` so it can be unit-tested without going through FFI.
-///
-/// Operates on a copy of `data` and only writes back on success, so a
-/// mismatched width/height (or any panic inside `imageops`) leaves the
-/// original buffer untouched.
+/// Kept separate for testing purposes
 fn blur(width: u32, height: u32, data: &mut [u8], params: &BlurParams) -> Result<(), String> {
     let mut img: ImageBuffer<Rgba<u8>, Vec<u8>> =
         ImageBuffer::from_raw(width, height, data.to_vec())
@@ -24,26 +20,8 @@ fn blur(width: u32, height: u32, data: &mut [u8], params: &BlurParams) -> Result
     Ok(())
 }
 
-/// Parses `params_str` and runs the blur. Errors are returned explicitly
-/// instead of panicking; `process_image` additionally wraps this in
-/// `catch_unwind` as a last line of defense.
-fn process_image_inner(
-    width: u32,
-    height: u32,
-    data: &mut [u8],
-    params_str: &str,
-) -> Result<(), String> {
-    let params: BlurParams =
-        serde_json::from_str(params_str).map_err(|e| format!("invalid blur params: {e}"))?;
-    blur(width, height, data, &params)
-}
-
-/// FFI entry point. A panic must never unwind across this boundary (UB on
-/// the host side), so the whole body runs inside `catch_unwind`; every
-/// fallible step also fails explicitly rather than via `.expect()`/`panic!`
-/// so `catch_unwind` is a safety net, not the primary error path. On any
-/// failure the error is logged and `rgba_data` is left unmodified.
 #[unsafe(no_mangle)]
+#[instrument(skip(rgba_data))]
 pub unsafe extern "C" fn process_image(
     width: u32,
     height: u32,
@@ -51,14 +29,14 @@ pub unsafe extern "C" fn process_image(
     params: *const c_char,
 ) {
     if rgba_data.is_null() || params.is_null() {
-        eprintln!("blur: null pointer passed to process_image, leaving buffer unchanged");
+        error!("blur: null pointer passed to process_image");
         return;
     }
 
     let params_str = match unsafe { CStr::from_ptr(params) }.to_str() {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("blur: params must be valid UTF-8: {e}, leaving buffer unchanged");
+            error!("blur: params must be valid UTF-8: {e}");
             return;
         }
     };
@@ -67,13 +45,18 @@ pub unsafe extern "C" fn process_image(
     let data = unsafe { slice::from_raw_parts_mut(rgba_data, len) };
 
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        process_image_inner(width, height, data, params_str)
+        let params: BlurParams =
+            serde_json::from_str(params_str).map_err(|e| format!("invalid blur params: {e}"))?;
+
+        blur(width, height, data, &params)
     }));
 
     match result {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => eprintln!("blur: {e}, leaving buffer unchanged"),
-        Err(_) => eprintln!("blur: panicked while processing image, leaving buffer unchanged"),
+        Ok(Ok(())) => {
+            info!("blur applied to image")
+        }
+        Ok(Err(e)) => error!("blur: {e}"),
+        Err(_) => error!("blur: panicked while processing image"),
     }
 }
 
@@ -83,8 +66,6 @@ mod tests {
 
     #[test]
     fn uniform_buffer_is_unchanged_by_blur() {
-        // Every pixel identical: the mean of any neighborhood is the same
-        // color, so a box blur must be a no-op regardless of radius.
         let mut data = vec![42u8; 4 * 4 * 4]; // 4x4 RGBA, all pixels (42,42,42,42)
         let original = data.clone();
 
@@ -122,12 +103,7 @@ mod tests {
 
         // Every neighbor of the center (the 4 edge-adjacent pixels) should
         // now have picked up some brightness from the blur.
-        let neighbors = [
-            (0usize, 1usize),
-            (1, 0),
-            (1, 2),
-            (2, 1),
-        ];
+        let neighbors = [(0usize, 1usize), (1, 0), (1, 2), (2, 1)];
         for (row, col) in neighbors {
             let idx = (row * 3 + col) * 4;
             assert!(

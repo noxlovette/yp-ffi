@@ -11,3 +11,4 @@ crate-type = ["cdylib"]
 plugin_interface = { path = "../plugin_interface" }
 serde_json.workspace = true
 image.workspace = true
+tracing.workspace = true

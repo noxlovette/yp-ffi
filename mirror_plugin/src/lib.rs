@@ -4,8 +4,8 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::panic::{self, AssertUnwindSafe};
 use std::slice;
+use tracing::error;
 
-/// a separate func for testing purposes
 fn mirror(width: u32, height: u32, data: &mut [u8], params: &MirrorParams) -> Result<(), String> {
     let mut img: ImageBuffer<Rgba<u8>, Vec<u8>> =
         ImageBuffer::from_raw(width, height, data.to_vec())
@@ -22,19 +22,6 @@ fn mirror(width: u32, height: u32, data: &mut [u8], params: &MirrorParams) -> Re
     Ok(())
 }
 
-/// parses `params_str` and runs the mirror
-fn process_image_inner(
-    width: u32,
-    height: u32,
-    data: &mut [u8],
-    params_str: &str,
-) -> Result<(), String> {
-    let params: MirrorParams =
-        serde_json::from_str(params_str).map_err(|e| format!("invalid mirror params: {e}"))?;
-    mirror(width, height, data, &params)
-}
-
-/// doesn't panic
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn process_image(
     width: u32,
@@ -43,14 +30,14 @@ pub unsafe extern "C" fn process_image(
     params: *const c_char,
 ) {
     if rgba_data.is_null() || params.is_null() {
-        eprintln!("mirror: null pointer passed to process_image");
+        error!("mirror: null pointer passed to process_image");
         return;
     }
 
     let params_str = match unsafe { CStr::from_ptr(params) }.to_str() {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("mirror: params must be valid UTF-8: {e}");
+            error!("mirror: params must be valid UTF-8: {e}");
             return;
         }
     };
@@ -59,13 +46,15 @@ pub unsafe extern "C" fn process_image(
     let data = unsafe { slice::from_raw_parts_mut(rgba_data, len) };
 
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        process_image_inner(width, height, data, params_str)
+        let params: MirrorParams =
+            serde_json::from_str(params_str).map_err(|e| format!("invalid mirror params: {e}"))?;
+        mirror(width, height, data, &params)
     }));
 
     match result {
         Ok(Ok(())) => {}
-        Ok(Err(e)) => eprintln!("mirror: {e}"),
-        Err(_) => eprintln!("mirror: panicked while processing image"),
+        Ok(Err(e)) => error!("mirror: {e}"),
+        Err(_) => error!("mirror: panicked while processing image"),
     }
 }
 
