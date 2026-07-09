@@ -8,20 +8,18 @@ use tracing::error;
 
 /// Kept separate for testing purposes
 fn blur(width: u32, height: u32, data: &mut [u8], params: &BlurParams) -> Result<(), String> {
-    let mut img: ImageBuffer<Rgba<u8>, Vec<u8>> =
+    let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
         ImageBuffer::from_raw(width, height, data.to_vec())
             .ok_or_else(|| "width/height do not match buffer length".to_string())?;
 
-    for _ in 0..params.iterations {
-        img = imageops::fast_blur(&img, params.radius as f32);
-    }
+    let img = imageops::blur(&img, params.sigma);
 
     data.copy_from_slice(img.as_raw());
     Ok(())
 }
 
 #[unsafe(no_mangle)]
-/// Blurs the given image using the image crate
+/// Gaussian-blurs the given image using the image crate
 ///
 /// # Safety
 ///
@@ -74,16 +72,7 @@ mod tests {
         let mut data = vec![42u8; 4 * 4 * 4];
         let original = data.clone();
 
-        blur(
-            4,
-            4,
-            &mut data,
-            &BlurParams {
-                radius: 1,
-                iterations: 2,
-            },
-        )
-        .unwrap();
+        blur(4, 4, &mut data, &BlurParams { sigma: 2.0 }).unwrap();
 
         assert_eq!(data, original);
     }
@@ -94,16 +83,7 @@ mod tests {
         let center = 3 * 4;
         data[center..center + 4].copy_from_slice(&[255, 255, 255, 255]);
 
-        blur(
-            3,
-            3,
-            &mut data,
-            &BlurParams {
-                radius: 1,
-                iterations: 1,
-            },
-        )
-        .unwrap();
+        blur(3, 3, &mut data, &BlurParams { sigma: 1.0 }).unwrap();
 
         let neighbors = [(0usize, 1usize), (1, 0), (1, 2), (2, 1)];
         for (row, col) in neighbors {

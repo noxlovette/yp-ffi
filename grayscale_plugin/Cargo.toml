@@ -1,0 +1,14 @@
+[package]
+name = "grayscale_plugin"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "grayscale"
+crate-type = ["cdylib"]
+
+[dependencies]
+plugin_interface = { path = "../plugin_interface" }
+serde_json.workspace = true
+image.workspace = true
+tracing.workspace = true

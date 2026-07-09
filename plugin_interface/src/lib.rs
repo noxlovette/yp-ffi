@@ -35,6 +35,8 @@ pub enum Plugin {
     Mirror,
     /// this guy blurs the image
     Blur,
+    /// this guy converts the image to grayscale
+    Grayscale,
 }
 
 impl Display for Plugin {
@@ -48,6 +50,7 @@ impl Plugin {
         match self {
             Plugin::Blur => "blur",
             Plugin::Mirror => "mirror",
+            Plugin::Grayscale => "grayscale",
         }
     }
 

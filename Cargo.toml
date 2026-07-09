@@ -2,6 +2,7 @@
 resolver = '3'
 members = [
     "blur_plugin",
+    "grayscale_plugin",
     "image_processor",
     "mirror_plugin",
     "plugin_interface",
