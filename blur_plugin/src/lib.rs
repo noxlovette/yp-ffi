@@ -4,7 +4,7 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::panic::{self, AssertUnwindSafe};
 use std::slice;
-use tracing::{error, info};
+use tracing::error;
 
 /// Kept separate for testing purposes
 fn blur(width: u32, height: u32, data: &mut [u8], params: &BlurParams) -> Result<(), String> {
@@ -21,6 +21,11 @@ fn blur(width: u32, height: u32, data: &mut [u8], params: &BlurParams) -> Result
 }
 
 #[unsafe(no_mangle)]
+/// Blurs the given image using the image crate
+///
+/// # Safety
+///
+/// will not panic, no UB
 pub unsafe extern "C" fn process_image(
     width: u32,
     height: u32,
@@ -54,9 +59,7 @@ pub unsafe extern "C" fn process_image(
     }));
 
     match result {
-        Ok(Ok(())) => {
-            info!("blur applied to image")
-        }
+        Ok(Ok(())) => {}
         Ok(Err(e)) => error!("blur: {e}"),
         Err(_) => error!("blur: panicked while processing image"),
     }
@@ -68,7 +71,7 @@ mod tests {
 
     #[test]
     fn uniform_buffer_is_unchanged_by_blur() {
-        let mut data = vec![42u8; 4 * 4 * 4]; // 4x4 RGBA, all pixels (42,42,42,42)
+        let mut data = vec![42u8; 4 * 4 * 4];
         let original = data.clone();
 
         blur(
@@ -87,9 +90,8 @@ mod tests {
 
     #[test]
     fn bright_center_pixel_bleeds_into_neighbors() {
-        // 3x3 buffer, black everywhere except a white center pixel.
         let mut data = vec![0u8; 3 * 3 * 4];
-        let center = (1 * 3 + 1) * 4; // row 1, col 1
+        let center = 3 * 4;
         data[center..center + 4].copy_from_slice(&[255, 255, 255, 255]);
 
         blur(
@@ -103,8 +105,6 @@ mod tests {
         )
         .unwrap();
 
-        // Every neighbor of the center (the 4 edge-adjacent pixels) should
-        // now have picked up some brightness from the blur.
         let neighbors = [(0usize, 1usize), (1, 0), (1, 2), (2, 1)];
         for (row, col) in neighbors {
             let idx = (row * 3 + col) * 4;

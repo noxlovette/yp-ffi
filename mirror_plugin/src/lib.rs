@@ -4,7 +4,7 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::panic::{self, AssertUnwindSafe};
 use std::slice;
-use tracing::{error, info};
+use tracing::error;
 
 fn mirror(width: u32, height: u32, data: &mut [u8], params: &MirrorParams) -> Result<(), String> {
     let mut img: ImageBuffer<Rgba<u8>, Vec<u8>> =
@@ -23,6 +23,11 @@ fn mirror(width: u32, height: u32, data: &mut [u8], params: &MirrorParams) -> Re
 }
 
 #[unsafe(no_mangle)]
+/// Mirrors the given image using the image crate
+///
+/// # Safety
+///
+/// will not panic, no UB
 pub unsafe extern "C" fn process_image(
     width: u32,
     height: u32,
@@ -55,7 +60,7 @@ pub unsafe extern "C" fn process_image(
     }));
 
     match result {
-        Ok(Ok(())) => info!("mirror applied to image"),
+        Ok(Ok(())) => {}
         Ok(Err(e)) => error!("mirror: {e}"),
         Err(_) => error!("mirror: panicked while processing image"),
     }

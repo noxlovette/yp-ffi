@@ -2,19 +2,27 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
+/// params passed onto the mirror plugin
 pub struct MirrorParams {
+    /// flip horizontally
     #[serde(default)]
     pub horizontal: bool,
+    /// flip vertically
     #[serde(default)]
     pub vertical: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
+/// params passed onto the blur plugin
 pub struct BlurParams {
-    // missing keys default to a no-op blur (radius 0, 0 iterations)
+    /// blur radius
+    ///
+    /// missing keys default to a no-op blur (radius 0, 0 iterations)
     #[serde(default)]
     pub radius: u32,
+
+    /// how many times to smear the thing
     #[serde(default)]
     pub iterations: u32,
 }

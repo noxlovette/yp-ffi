@@ -8,7 +8,7 @@ use std::fmt::Display;
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
-use tracing::{info, instrument};
+use tracing::instrument;
 mod error;
 mod params;
 pub use error::*;
@@ -74,7 +74,6 @@ pub fn call_dynamic(
     data: &mut [u8],
     params_json: &str,
 ) -> Result<(), Error> {
-    info!("calling dynamic plugin load");
     let path: PathBuf = dir.join(plugin.as_lib_name()?);
     if !path.is_file() {
         return Err(Error::PluginLibraryNotFound(path));
@@ -84,6 +83,5 @@ pub fn call_dynamic(
     let params = CString::new(params_json)?;
 
     unsafe { func(width, height, data.as_mut_ptr(), params.as_ptr()) };
-    info!("finished processing image");
     Ok(())
 }
